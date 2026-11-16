@@ -91,3 +91,7 @@ Number questions use `num(id, question, answer, unit, explanation, tolerance)`, 
 - Stats page (`#stats`), a "Redo this session's questions" button, nine new lab instruments, and a new motion system (staggered entrances, drawn-in schematics, count-ups, feedback animations).
 - A correct answer after a hint counts, but the question returns sooner in your warm-ups.
 - Service worker is `rise-time-v1.1.0`. Bump it whenever you deploy file changes.
+
+## Update 1.2
+
+Weeks 7 to 9 are in (sessions 31 to 45): Laplace and transfer functions, first and second order responses, poles and stability, PID and tuning, DC motors, induction motors and VSDs, hydraulics, PLC scan cycle, ladder patterns, and interlocks and safety. Nine new diagrams, plus hints, watch-outs and formulas for every new session. Weeks 10 to 12 (robot kinematics, embedded, comms and fault finding) are next.

@@ -1,6 +1,6 @@
 /* Rise Time service worker: makes the whole app available offline.
    Bump VERSION whenever you deploy changes so devices pick up the new files. */
-const VERSION = 'rise-time-v1.1.0';
+const VERSION = 'rise-time-v1.2.0';
 const SHELL = [
   './',
   './index.html',
@@ -9,6 +9,8 @@ const SHELL = [
   './js/content-w4.js',
   './js/content-w5.js',
   './js/content-w6.js',
+  './js/content-w7.js',
+  './js/extras2.js',
   './js/extras.js',
   './js/app.js',
   './js/sims2.js',
