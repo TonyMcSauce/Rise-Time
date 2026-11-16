@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rise Time</title>
+<meta name="description" content="A daily weekday refresher for mechatronics and robotics: maths, circuits, control, PLCs and kinematics.">
+<meta name="theme-color" content="#06100e">
+<meta name="color-scheme" content="dark">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rise Time">
+<link rel="preload" href="fonts/chakra-petch-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#today" aria-label="Rise Time home"><span id="brandmark"></span><span class="wm">RISE TIME<small>MECHATRONICS · DAILY REFRESH</small></span></a>
+  <nav class="nav" aria-label="Main"><a href="#today" data-n="today">TODAY</a><a href="#map" data-n="map">MAP</a><a href="#lab" data-n="lab">LAB</a><a href="#drill" data-n="drill">DRILL</a></nav>
+  <div class="status" id="status" aria-live="polite"></div>
+</header>
+<main id="app"></main>
+<noscript><p style="padding:24px">Rise Time needs JavaScript turned on.</p></noscript>
+<script src="js/content.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

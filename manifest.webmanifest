@@ -1,0 +1,23 @@
+{
+  "name": "Rise Time: Mechatronics Refresher",
+  "short_name": "Rise Time",
+  "description": "A daily weekday refresher for mechatronics and robotics.",
+  "id": "./",
+  "start_url": "./#today",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#06100e",
+  "theme_color": "#06100e",
+  "categories": ["education", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Today's session", "url": "./#today" },
+    { "name": "Quick drill", "url": "./#drill" },
+    { "name": "The lab", "url": "./#lab" }
+  ]
+}
