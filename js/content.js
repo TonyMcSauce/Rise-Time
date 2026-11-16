@@ -563,5 +563,5 @@ const OUTLINE = [
 ];
 const PHASES = {1:'Foundations',2:'Foundations',3:'Foundations'};
 
-window.RT = {TRACKS, SESSIONS, OUTLINE, PHASES, BASELINE, DIAG, comp, wire, dot, gnd, txt, sch, term};
+window.RT = {TRACKS, SESSIONS, OUTLINE, PHASES, BASELINE, DIAG, comp, wire, dot, gnd, txt, sch, term, num, mcq, f2, plotPath, arrowDefs};
 })();

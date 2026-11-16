@@ -106,9 +106,9 @@ function mastery(){
   for(const [qid,c] of Object.entries(S.cards)){ const t=QTRACK[qid]; if(t&&out[t]){ out[t].sum+=(c.b-1)/4; out[t].n++; } }
   return out;
 }
-function record(qid,ok){
+function record(qid,ok,assisted){
   const c=S.cards[qid]||{b:1,n:0,c:0,t:null};
-  c.b = ok ? Math.min(5,(c.n===0?2:c.b+1)) : 1;
+  c.b = ok ? Math.min(assisted?2:5,(c.n===0?2:c.b+1)) : 1;
   c.n++; if(ok) c.c++; c.t=TODAY();
   S.cards[qid]=c; save();
 }
@@ -135,11 +135,14 @@ function renderQ(q,i,showFrom){
       return `<button class="choice ${cls}" data-choice="${k}" ${st.done?'disabled':''}><span class="ix">${'ABCD'[k]}</span><span>${c}</span></button>`;
     }).join('')+`</div>`;
   } else {
-    h+=`<div class="ans"><div class="inp"><input id="in-${q.id}" inputmode="decimal" autocomplete="off" placeholder="answer" aria-label="Your answer" value="${st.val!=null?esc(st.val):''}" ${st.done?'disabled':''}>${q.unit?`<span class="u">${q.unit}</span>`:''}</div>
+    h+=`<div class="ans"><div class="inp"><input id="in-${q.id}" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="answer" aria-label="Your answer" value="${st.val!=null?esc(st.val):''}" ${st.done?'disabled':''}>${q.unit?`<span class="u">${q.unit}</span>`:''}</div>
     ${st.done?'':`<button class="btn sm" data-check>Check</button>`}</div>`;
   }
+  if(!st.done && q.hint){
+    h+= st.hint ? `<div class="hintbox"><b>Hint</b>${q.hint}</div>` : `<div class="qh"><button class="btn sm ghost" data-hint>Need a hint?</button></div>`;
+  }
   if(st.done){
-    h+=`<div class="fb ${st.first?'':'no'}"><span class="v">${st.first?'Correct, first time':(st.ok?'Got there':'Answer')}${q.type==='num'?` · ${fmtNum(q.ans)} ${q.unit||''}`:''}</span>${q.explain}</div>`;
+    h+=`<div class="fb ${st.first?'':'no'}"><span class="v">${st.first?'Correct, first time':(st.ok?(st.hinted&&st.tries===1?'Correct, with a hint':'Got there'):'Answer')}${q.type==='num'?` · ${fmtNum(q.ans)} ${q.unit||''}`:''}</span>${q.explain}</div>`;
   } else if(st.tries){
     h+=`<div class="fb no"><span class="v">Not quite · try again</span>Check your units and rounding.<div class="reveal"><button class="btn sm amber" data-show>Show answer</button></div></div>`;
   }
@@ -148,15 +151,28 @@ function renderQ(q,i,showFrom){
   return h+`</div>`;
 }
 const fmtNum = v => Math.abs(v)>=1000||Number.isInteger(v)?String(v):String(+v.toPrecision(4));
+const PFX={p:1e-12,n:1e-9,u:1e-6,'µ':1e-6,m:1e-3,k:1e3,K:1e3,M:1e6,G:1e9};
+const BASEU=['A','V','Ω','F','H','s','W','J','Hz','VA','var','Wh','Ah','m','N','g'];
+function unitMult(u){ if(!u||u.length<2) return 1; const p=u[0]; return (PFX[p]&&BASEU.includes(u.slice(1))&&!['m/s','rad/s'].includes(u))?PFX[p]:1; }
 function checkNum(q,raw){
-  const v=parseFloat(String(raw).replace(/\s/g,'').replace(',','.'));
-  if(!isFinite(v)) return null;
-  return q.ans===0 ? Math.abs(v)<1e-6 : Math.abs(v-q.ans)/Math.abs(q.ans) <= (q.tol||0.02);
+  let t=String(raw).trim().replace(/\s+/g,' ').replace('−','-');
+  t=/^[-+]?\d{1,3}(,\d{3})+(\.\d+)?(?=\s|$|[A-Za-zµΩ°])/.test(t)?t.replace(/,/g,''):t.replace(/(\d),(\d)/g,'$1.$2');
+  const m=t.match(/^([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*(.*)$/);
+  if(!m) return null;
+  const v=parseFloat(m[1]); if(!isFinite(v)) return null;
+  const rest=m[2].trim();
+  const close=(x,y)=>y===0?Math.abs(x)<1e-6:Math.abs(x-y)/Math.abs(y)<=(q.tol||0.02);
+  if(!rest||rest===q.unit) return close(v,q.ans);
+  let mult=1;
+  const p=rest[0];
+  if(PFX[p]!==undefined && (rest.length===1||BASEU.includes(rest.slice(1))) && rest!==q.unit){ mult=PFX[p]; }
+  else if(!/^[A-Za-zΩµ°/·²³ ]+$/.test(rest)) return null;
+  return close(v*mult, q.ans*unitMult(q.unit)) || close(v,q.ans);
 }
 function answer(qid,ok,extra={}){
   const st=QS[qid]||(QS[qid]={tries:0});
   Object.assign(st,extra);
-  if(st.tries===0) { st.first=ok; record(qid,ok); }
+  if(st.tries===0) { st.first=ok&&!st.hinted; record(qid,ok,st.hinted); }
   st.tries++;
   if(ok){ st.done=true; st.ok=true; }
   repaintQ(qid);
@@ -172,7 +188,8 @@ app.addEventListener('click',e=>{
   const qid=qel.dataset.q, q=QINDEX[qid];
   const ch=e.target.closest('[data-choice]');
   if(ch){ const k=+ch.dataset.choice; const st=QS[qid]||(QS[qid]={tries:0}); if(st.done) return;
-    const ok=k===q.ans; if(st.tries===0){st.first=ok;record(qid,ok);} st.tries++; st.done=true; st.ok=ok; st.picked=k; repaintQ(qid); return; }
+    const ok=k===q.ans; if(st.tries===0){st.first=ok&&!st.hinted;record(qid,ok,st.hinted);} st.tries++; st.done=true; st.ok=ok; st.picked=k; repaintQ(qid); return; }
+  if(e.target.closest('[data-hint]')){ const st=QS[qid]||(QS[qid]={tries:0}); st.hinted=true; st.hint=true; const v=$('#in-'+qid); if(v) st.val=v.value; repaintQ(qid); const b=$('#in-'+qid); if(b) b.focus(); return; }
   if(e.target.closest('[data-check]')){ doCheck(qid); return; }
   if(e.target.closest('[data-show]')){ const st=QS[qid]; st.done=true; st.ok=false; repaintQ(qid); }
 });
@@ -216,19 +233,47 @@ function paintStatus(){
   el.innerHTML=`<span class="${c}"></span><span>${t}</span>`;
   el.title = sync==='local' ? 'Progress is saved on this device and works offline. Use Back up and Restore in the footer to move it to another device.' : '';
 }
-function navOn(name){ $$('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.n===name)); }
+function navOn(name){  $$('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.n===name)); }
 let RUN=null; let cleanup=[];
 function clearView(){ cleanup.forEach(f=>{try{f()}catch(e){}}); cleanup=[]; }
 function route(){
   clearView();
   const h=(location.hash||'#today').slice(1);
-  if(h.startsWith('session-')) return viewSession(+h.slice(8));
-  if(h==='map') return viewMap();
-  if(h==='lab') return viewLab();
-  if(h.startsWith('lab-')) return viewLab(h.slice(4));
-  if(h==='drill') return viewDrill();
-  return viewToday();
+  if(h.startsWith('session-')) viewSession(+h.slice(8));
+  else if(h==='map') viewMap();
+  else if(h==='lab') viewLab();
+  else if(h.startsWith('lab-')) viewLab(h.slice(4));
+  else if(h==='drill') viewDrill();
+  else if(h==='sheet') viewSheet();
+  else if(h==='stats') viewStats();
+  else viewToday();
+  fx();
 }
+/* ---------- motion: staggered entrances, drawn schematics, count-ups ---------- */
+const SKIPDRAW='.flow,.tick,.axis,.dash,.hop,.g,.ring,.arc,.proj,.area,.hotflow';
+function fx(root){
+  root=root||app;
+  if(RM) return;
+  let n=0;
+  $$('.panel,.cell,.wk,.li,.labt,.shead,.sheetcard,.statcard,.maphead,.phase',root).forEach(el=>{ if(el.closest('.sim')||el.closest('.modal')) return; el.style.setProperty('--n',Math.min(n++,18)); el.classList.add('enter'); });
+  $$('.sch',root).forEach(svg=>{ let i=0;
+    $$('line,polyline,path,polygon,circle,rect',svg).forEach(el=>{
+      if(el.matches(SKIPDRAW)||el.closest('defs,marker')||el.matches('.node,.term,.fillw')||el.closest('.fillw')) return;
+      el.setAttribute('pathLength','1'); el.classList.add('draw'); el.style.setProperty('--i',Math.min(i++,60)); });
+    svg.classList.add('drawn'); });
+  $$('[data-count]',root).forEach(el=>{
+    const to=+el.dataset.count, dec=+(el.dataset.dec||0), t0=performance.now(), dur=700+Math.min(500,to*8);
+    const step=t=>{ const k=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-k,3); el.textContent=(to*e).toFixed(dec); if(k<1) requestAnimationFrame(step); else el.textContent=to.toFixed(dec); };
+    el.textContent=(0).toFixed(dec); requestAnimationFrame(step); });
+}
+function burst(host){
+  if(RM||!host) return; const b=document.createElement('div'); b.className='burst'; 
+  for(let i=0;i<28;i++){ const sp=document.createElement('i'); const a=Math.PI*2*i/28+Math.random()*.3, d=90+Math.random()*190;
+    sp.style.setProperty('--dx',Math.cos(a)*d+'px'); sp.style.setProperty('--dy',Math.sin(a)*d*0.7+'px'); sp.style.setProperty('--dl',Math.random()*120+'ms');
+    sp.style.background=['var(--phos)','var(--amber)','var(--ch2)','#fff'][i%4]; b.appendChild(sp); }
+  host.appendChild(b); setTimeout(()=>b.remove(),1400);
+}
+document.addEventListener('pointermove',e=>{ const p=e.target.closest&&e.target.closest('.panel'); if(!p) return; const r=p.getBoundingClientRect(); p.style.setProperty('--mx',(e.clientX-r.left)+'px'); p.style.setProperty('--my',(e.clientY-r.top)+'px'); },{passive:true});
 function rerender(){ paintStatus(); const h=location.hash; if(!h||h==='#today'||h==='#map') route(); }
 window.addEventListener('hashchange',()=>{ route(); window.scrollTo({top:0,behavior:RM?'auto':'smooth'}); });
 
@@ -329,10 +374,10 @@ function viewToday(){
     ${hero}
     <div class="side">
       <section class="panel streak"><div class="eyebrow">Weekday streak</div>
-        <div class="big">${st}<small>${st===1?'DAY':'DAYS'} · BEST ${Math.max(best(),st)}</small></div>
+        <div class="big"><span data-count="${st}">${st}</span><small>${st===1?'DAY':'DAYS'} · BEST ${Math.max(best(),st)}</small></div>
         <div class="days">${dayCells}</div></section>
       <section class="panel"><div class="eyebrow">Programme</div>
-        <h3 style="margin-top:10px">${doneN} of 60 sessions</h3>
+        <h3 style="margin-top:10px"><span data-count="${doneN}">${doneN}</span> of 60 sessions</h3>
         <div class="meter"><i style="width:${Math.max(1.5,doneN/60*100)}%"></i></div>
         <div class="readout"><span>WEEK ${t?t.wk:Math.min(12,Math.ceil((doneN+1)/5))} OF 12</span><span>${recent?'LAST '+(recent.c)+'/'+(recent.n)+' CORRECT':'NO SESSIONS YET'}</span></div></section>
     </div>
@@ -341,7 +386,7 @@ function viewToday(){
       <p class="hint" style="margin-top:16px">Each bar rises as you answer correctly over repeated days. A miss drops that question back to the start of the queue, and it returns in your warm-ups until it sticks.</p></section>
     <section class="panel next"><div class="eyebrow">Coming down the line</div><h2 style="margin-top:10px">Up next</h2><div class="list">${upHtml}</div>
       <div class="row" style="margin-top:16px"><a class="btn sm" href="#drill">Quick drill</a><a class="btn sm" href="#map">Full map</a></div></section>
-    <section class="panel labstrip"><div class="eyebrow">The lab · open any time</div><h2 style="margin-top:10px">Turn the knobs, watch the physics</h2><div class="labs">${labTiles()}</div></section>
+    <section class="panel labstrip"><div class="eyebrow">The lab · open any time</div><h2 style="margin-top:10px">Turn the knobs, watch the physics</h2><div class="labs">${labTiles(6)}</div><div class="row" style="margin-top:14px"><a class="btn sm" href="#lab">All ${Object.keys(SIMS).length} instruments</a><a class="btn sm" href="#sheet">Formula sheet</a><a class="btn sm" href="#stats">Your stats</a></div></section>
   </div>${footer()}`;
 }
 
@@ -376,7 +421,7 @@ function viewSession(id){
     let warm = pickWeakest(pool(id),3);
     let cold=false;
     if(warm.length<3){ cold=!warm.length; const extra=BASELINE.filter(q=>!warm.includes(q)).sort(()=>Math.random()-.5).slice(0,3-warm.length); warm=warm.concat(extra); }
-    RUN={view:'session',id,stage:0,seen:new Set([0]),warm,cold,t0:Date.now(),complete:false,showSteps:0};
+    RUN={view:'session',id,stage:0,seen:new Set([0]),warm,cold,t0:Date.now(),complete:false,showSteps:0,fresh:true};
   }
   paintSession();
 }
@@ -390,8 +435,9 @@ function paintSession(){
     <p class="empty" style="margin:-4px 0 18px">${RUN.cold?'Nothing in your archive yet, so here are three primers to get the brain turning over.':'Spaced review. These are the questions you have struggled with or not seen for a while.'}</p>
     <div class="qs">${RUN.warm.map((q,i)=>renderQ(q,i,true)).join('')}</div>`;
   } else if(RUN.stage===1){
-    body=`<div class="prose">${s.learn}</div>${s.diagram?DIAG[s.diagram]():''}${s.sim?`<div id="simhost"></div>`:''}
-    <div class="pins"><h4>Pin these</h4><ul>${s.pins.map(p=>`<li>${p}</li>`).join('')}</ul></div>`;
+    body=`<div class="prose">${s.learn}</div>${s.diagram?DIAG[s.diagram]():''}${s.sim&&SIMS[s.sim]?`<div id="simhost"></div>`:''}
+    <div class="pins"><h4>Pin these</h4><ul>${s.pins.map(p=>`<li>${p}</li>`).join('')}</ul></div>
+    ${s.watch?`<div class="watch"><h4>Watch out</h4><ul>${s.watch.map(p=>`<li>${p}</li>`).join('')}</ul></div>`:''}`;
   } else if(RUN.stage===2){
     const w=s.worked, n=RUN.showSteps;
     body=`<div class="sub">Worked example</div>${w.fig&&s.diagram?DIAG[s.diagram]():''}<div class="worked"><div class="wq"><span class="tag">PROBLEM</span><div>${w.prompt}</div></div>
@@ -402,24 +448,27 @@ function paintSession(){
   } else {
     const done=S.done[s.id];
     body=`<article class="plant"><div class="tagline">On the plant</div><h2>${s.plant.title}</h2>${s.plant.body}</article>
-    ${s.recall&&s.recall.length?`<div class="sub">One for the archive</div><div class="qs">${s.recall.map((q,i)=>renderQ(q,i,false)).join('')}</div>`:''}`;
-    void done;
+    ${s.recall&&s.recall.length?`<div class="sub">One for the archive</div><div class="qs">${s.recall.map((q,i)=>renderQ(q,i,false)).join('')}</div>`:''}
+    <div class="row" style="margin-top:22px">${s.formulas?`<a class="btn sm" href="#sheet">Formulas from this session</a>`:''}${done?`<button class="btn sm" data-redo>Redo this session's questions</button>`:''}</div>`;
   }
   const last=RUN.stage===3;
   const nav=`<div class="snav"><button class="btn" data-go="${RUN.stage-1}" ${RUN.stage===0?'disabled':''}>← ${RUN.stage?STAGES[RUN.stage-1]:'Back'}</button>
    ${last ? (S.done[s.id]?`<a class="btn pri" href="#today">Logged ${fmtDate(parseYmd(S.done[s.id]))} · back to bench</a>`:`<button class="btn pri" data-log>Log session <span class="k">✓</span></button>`) : `<button class="btn pri" data-go="${RUN.stage+1}">${STAGES[RUN.stage+1]} <span class="k">→</span></button>`}</div>`;
   app.innerHTML=`<div class="sess">${rail}<div>
     <header class="shead"><div class="eyebrow"><span>${code(s)}</span><span class="ch" style="--c:${tk.color}">${tk.ch} · ${tk.name}</span></div><h1>${esc(s.title)}</h1><p>${s.kicker}</p></header>
-    <div class="stage" id="stage">${body}${nav}</div></div></div>`;
-  if(RUN.stage===1 && s.sim){ clearView(); mountSim(s.sim,$('#simhost')); }
+    <div class="stage" id="stage" ${RUN.anim?`data-anim="${RUN.dir>0?'f':'b'}"`:''}>${body}${nav}</div></div></div>`;
+  RUN.anim=false;
+  if(RUN.fresh){ RUN.fresh=false; fx(); } else if(RUN.stagefx){ RUN.stagefx=false; fx($('#stage')); }
+  if(RUN.stage===1 && s.sim && SIMS[s.sim]){ clearView(); mountSim(s.sim,$('#simhost')); }
 }
 app.addEventListener('click',e=>{
   if(!RUN||RUN.view!=='session') return;
   const g=e.target.closest('[data-go],[data-stage]');
-  if(g){ const to=+(g.dataset.go??g.dataset.stage); if(to<0||to>3) return; clearView(); RUN.stage=to; RUN.seen.add(to); paintSession(); window.scrollTo({top:0,behavior:RM?'auto':'smooth'}); return; }
+  if(g){ const to=+(g.dataset.go??g.dataset.stage); if(to<0||to>3) return; clearView(); RUN.dir=to-RUN.stage; RUN.anim=true; RUN.stagefx=true; RUN.stage=to; RUN.seen.add(to); paintSession(); window.scrollTo({top:0,behavior:RM?'auto':'smooth'}); return; }
   if(e.target.closest('[data-step]')){ RUN.showSteps++; paintSession(); return; }
   if(e.target.closest('[data-allsteps]')){ RUN.showSteps=99; paintSession(); return; }
   if(e.target.closest('[data-log]')) logSession();
+  if(e.target.closest('[data-redo]')){ const s=ALL[RUN.id-1]; [...s.tryit,...(s.recall||[])].forEach(q=>{delete QS[q.id];}); RUN.stage=2; RUN.showSteps=99; RUN.anim=true; RUN.dir=-1; clearView(); paintSession(); window.scrollTo({top:0}); toast('Questions reset. Go again.'); }
 });
 function logSession(){
   const s=ALL[RUN.id-1];
@@ -427,7 +476,7 @@ function logSession(){
   const att=qids.filter(id=>QS[id]&&QS[id].tries); const c=att.filter(id=>QS[id].first).length;
   const ms=Date.now()-RUN.t0;
   S.done[s.id]=TODAY(); S.log.push({d:TODAY(),s:s.id,c,n:att.length,ms}); if(S.log.length>200) S.log=S.log.slice(-200);
-  save(); RUN.complete=true; RUN.result={c,n:att.length,ms,total:qids.length}; paintSession(); window.scrollTo({top:0});
+  save(); RUN.complete=true; RUN.result={c,n:att.length,ms,total:qids.length}; paintSession(); window.scrollTo({top:0}); const dc=$('.done-card'); if(dc){ fx(); burst(dc); }
 }
 function paintComplete(s){
   const r=RUN.result, mm=Math.floor(r.ms/60000), ss=Math.floor(r.ms/1000)%60;
@@ -435,7 +484,7 @@ function paintComplete(s){
   app.innerHTML=`<section class="panel done-card"><div>${stepSvg(560,300,{label:'your rise time'})}</div>
   <div><div class="eyebrow"><span>${code(s)}</span><span>· logged</span></div><h1 style="margin-top:12px">Session logged.</h1>
   <p class="kick" style="color:var(--ink-2)">${esc(s.title)} is in the archive. Its questions will come back in future warm-ups, more often if they gave you trouble.</p>
-  <div class="stats"><div class="stat"><div class="v">${r.c}/${r.n||0}</div><div class="k">Right first time</div></div><div class="stat"><div class="v">${mm}:${String(ss).padStart(2,'0')}</div><div class="k">Your rise time</div></div><div class="stat"><div class="v">${streak()}</div><div class="k">Weekday streak</div></div></div>
+  <div class="stats"><div class="stat"><div class="v"><span data-count="${r.c}">${r.c}</span>/${r.n||0}</div><div class="k">Right first time</div></div><div class="stat"><div class="v">${mm}:${String(ss).padStart(2,'0')}</div><div class="k">Your rise time</div></div><div class="stat"><div class="v">${streak()}</div><div class="k">Weekday streak</div></div></div>
   ${r.n<r.total?`<p class="hint">You skipped ${r.total-r.n} question${r.total-r.n>1?'s':''}. Skipped questions don't count against you, but they won't build mastery either.</p>`:''}
   <div class="row" style="margin-top:18px"><a class="btn pri" href="#today">Back to the bench</a>${nxt&&status(nxt)==='open'?`<a class="btn" href="#session-${nxt.id}">Next session</a>`:`<a class="btn" href="#lab">Visit the lab</a>`}</div></div></section>${footer()}`;
 }
@@ -454,6 +503,52 @@ function viewDrill(){
 }
 function paintDrillScore(){ const el=$('#dscore'); if(!el||!RUN) return; const a=RUN.qs.filter(q=>QS[q.id]&&QS[q.id].tries); const c=a.filter(q=>QS[q.id].first).length; el.textContent=`${c} OF ${a.length} RIGHT FIRST TIME · ${RUN.qs.length-a.length} TO GO`; }
 
+/* ================= SHEET ================= */
+function viewSheet(){
+  navOn('sheet'); RUN=null;
+  const have=ALL.filter(x=>!x.pipe && x.formulas && (S.done[x.id]||status(x)==='open'));
+  const locked=ALL.filter(x=>!x.pipe && x.formulas && !(S.done[x.id]||status(x)==='open')).length;
+  const nF=have.reduce((a,x)=>a+x.formulas.length,0);
+  const cards=have.map(x=>{ const tk=trk(x.track);
+    const rows=x.formulas.map(f=>`<div class="frow"><span class="fn">${f.n}</span><span class="ff">${f.f}</span>${f.note?`<span class="fnote">${f.note}</span>`:''}</div>`).join('');
+    return `<section class="panel sheetcard" style="--c:${tk.color}" data-t="${esc((x.title+' '+x.formulas.map(f=>f.n+' '+f.f+' '+f.note).join(' ')).replace(/<[^>]+>/g,'').toLowerCase())}"><div class="eyebrow"><span>${code(x)}</span><span class="ch" style="--c:${tk.color}">${tk.ch} · ${tk.name}</span></div><h3>${esc(x.title)}</h3><div class="fl">${rows}</div></section>`; }).join('');
+  const refs=window.RT.REF.map(t=>`<section class="panel sheetcard ref" data-t="${esc((t.title+' '+t.rows.map(r=>r.join(' ')).join(' ')).toLowerCase())}"><div class="eyebrow">Reference</div><h3>${t.title}</h3><div class="tw"><table><thead><tr>${t.cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${t.rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('');
+  app.innerHTML=`<header class="shead"><div class="eyebrow">Formula sheet · works offline</div><h1>The sheet</h1><p>${nF} formulas from the sessions you have opened, plus reference tables that are always here. ${locked?`${locked} more session${locked>1?'s':''} will add theirs as they unlock.`:''}</p></header>
+  <div class="searchbar"><input id="sheet-q" type="search" placeholder="Search: ripple, Pt100, gain, torque…" autocomplete="off" aria-label="Search the formula sheet"><span class="readout" id="sheet-n" style="margin:0"></span></div>
+  <div class="sheetgrid">${cards}${refs}</div><p class="empty" id="sheet-none" hidden style="margin-top:18px">Nothing matches that. Try a shorter word.</p>${footer()}`;
+  const q=$('#sheet-q'), upd=()=>{ const v=q.value.trim().toLowerCase(); let n=0; $$('.sheetcard').forEach(c=>{ const m=!v||c.dataset.t.includes(v); c.hidden=!m; if(m) n++; }); $('#sheet-none').hidden=n>0; $('#sheet-n').textContent=v?n+' MATCH'+(n===1?'':'ES'):''; };
+  q.addEventListener('input',upd);
+}
+
+/* ================= STATS ================= */
+function viewStats(){
+  navOn('stats'); RUN=null;
+  const cards=Object.entries(S.cards); const att=cards.reduce((a,[,c])=>a+c.n,0), cor=cards.reduce((a,[,c])=>a+c.c,0);
+  const acc=att?Math.round(cor/att*100):0;
+  const logs=S.log; const avg=logs.length?Math.round(logs.reduce((a,l)=>a+l.ms,0)/logs.length/60000*10)/10:0;
+  const doneN=Object.keys(S.done).length;
+  const tr={}; Object.keys(TRACKS).forEach(t=>{ if(t!=='REV') tr[t]={n:0,c:0}; });
+  cards.forEach(([id,c])=>{ const t=QTRACK[id]; if(t&&tr[t]){ tr[t].n+=c.n; tr[t].c+=c.c; } });
+  const bars=Object.entries(tr).map(([k,v])=>{ const t=TRACKS[k], p=v.n?Math.round(v.c/v.n*100):0;
+    return `<div class="sbar ${v.n?'':'off'}" style="--c:${t.color}"><span class="nm"><em>${t.ch}</em> ${t.name}</span><span class="trk"><i style="width:${p}%"></i></span><span class="pc">${v.n?p+'%':'·'}</span></div>`; }).join('');
+  const last=logs.slice(-12);
+  const maxT=Math.max(1,...last.map(l=>l.ms));
+  const spark=last.length?last.map(l=>{ const s=ALL[l.s-1]; const p=l.n?l.c/l.n:0;
+    return `<a class="col" href="#session-${l.s}" title="${esc(s.title)}: ${l.c}/${l.n}, ${Math.round(l.ms/60000*10)/10} min"><i class="a" style="height:${Math.max(4,p*100)}%"></i><i class="t" style="height:${Math.max(4,l.ms/maxT*100)}%"></i><b>${l.s}</b></a>`; }).join(''):'<p class="empty">Log a session and its result lands here.</p>';
+  const hard=cards.filter(([id,c])=>QINDEX[id]&&QFROM[id]&&c.n>=1&&c.c<c.n).sort((a,b)=>(a[1].c/a[1].n)-(b[1].c/b[1].n)||b[1].n-a[1].n).slice(0,5);
+  const hardH=hard.length?hard.map(([id,c])=>{ const q=QINDEX[id], sx=ALL[QFROM[id]-1]; return `<a class="li hq" href="#session-${sx.id}"><span class="when">${code(sx)}</span><span class="t">${q.q}</span><span class="st">${c.c}/${c.n}</span></a>`; }).join(''):'<p class="empty">No misses yet. They will show up here so you can fix them.</p>';
+  const days=doneDays(); const now=new Date(); const mon=new Date(now); mon.setDate(now.getDate()-((now.getDay()+6)%7));
+  let grid=''; for(let w=11;w>=0;w--){ for(let d=0;d<5;d++){ const dt=new Date(mon); dt.setDate(mon.getDate()-w*7+d); const k=ymd(dt); grid+=`<i class="${days.has(k)?'on':''} ${k===TODAY()?'now':''}" title="${k}"></i>`; } }
+  app.innerHTML=`<header class="shead"><div class="eyebrow">Stats · kept on this device</div><h1>Your numbers</h1><p>Honest feedback on what is sticking and what is not.</p></header>
+  <div class="statgrid">
+   <section class="panel statcard kp"><div class="k4"><div><b data-count="${doneN}">${doneN}</b><span>Sessions logged</span></div><div><b data-count="${acc}">${acc}</b><span>% correct overall</span></div><div><b data-count="${att}">${att}</b><span>Questions answered</span></div><div><b data-count="${avg}" data-dec="1">${avg}</b><span>Min per session</span></div></div></section>
+   <section class="panel statcard"><div class="eyebrow">Accuracy by channel</div><h3>Where you are strong</h3><div class="sbars">${bars}</div></section>
+   <section class="panel statcard"><div class="eyebrow">Recent sessions</div><h3>Score and time</h3><div class="spark">${spark}</div><p class="hint" style="margin-top:10px"><span class="lg a"></span> share right first time &nbsp; <span class="lg t"></span> time taken</p></section>
+   <section class="panel statcard"><div class="eyebrow">Toughest questions</div><h3>Worth another look</h3><div class="list">${hardH}</div></section>
+   <section class="panel statcard"><div class="eyebrow">Consistency · 12 weeks</div><h3>Weekday grid</h3><div class="cgrid">${grid}</div><p class="hint" style="margin-top:10px">Best run: ${Math.max(best(),streak())} weekdays. Current: ${streak()}.</p></section>
+  </div>${footer()}`;
+}
+
 /* ================= LAB ================= */
 const SIMS={
   phasor:{name:'Phasor and sine',desc:'Spin a phasor and watch its shadow become a sine wave.',c:'var(--ch1)',from:'Weeks 1 and 3',icon:'M2,23 C10,2 18,2 26,23 S42,44 50,23 S66,2 74,23 S90,44 98,23'},
@@ -463,11 +558,11 @@ const SIMS={
   pid:{name:'PID loop tuner',desc:'Tune Kp, Ki and Kd on a live step response.',c:'var(--ch5)',from:'Preview of Week 8',icon:'M2,42 L12,42 C18,0 26,0 32,16 C38,30 44,22 52,14 S70,12 98,14'},
   arm:{name:'Two-link robot arm',desc:'Drag joints, or tap a target and let IK solve it.',c:'var(--ch9)',from:'Preview of Week 10',icon:'M20,44 L44,18 L82,26'}
 };
-function labTiles(){ return Object.entries(SIMS).map(([k,v])=>`<a class="labt" style="--c:${v.c}" href="#lab-${k}"><svg viewBox="0 0 100 46" preserveAspectRatio="none"><path d="${v.icon}"/></svg><span class="n">${v.name}</span><span class="d">${v.desc}</span></a>`).join(''); }
+function labTiles(lim){ return Object.entries(SIMS).slice(0,lim||99).map(([k,v])=>`<a class="labt" style="--c:${v.c}" href="#lab-${k}"><svg viewBox="0 0 100 46" preserveAspectRatio="none"><path d="${v.icon}"/></svg><span class="n">${v.name}</span><span class="d">${v.desc}</span></a>`).join(''); }
 function viewLab(which){
   navOn('lab'); RUN=null;
   const k = SIMS[which] ? which : null;
-  app.innerHTML=`<header class="shead"><div class="eyebrow">The lab · six instruments</div><h1>${k?SIMS[k].name:'The lab'}</h1><p>${k?`${SIMS[k].desc} Linked to ${SIMS[k].from}.`:'Interactive instruments you can open any time. The later ones are previews of what is coming in the control and robotics weeks.'}</p></header>
+  app.innerHTML=`<header class="shead"><div class="eyebrow">The lab · ${Object.keys(SIMS).length} instruments</div><h1>${k?SIMS[k].name:'The lab'}</h1><p>${k?`${SIMS[k].desc} Linked to ${SIMS[k].from}.`:'Interactive instruments you can open any time. Circuits and electronics instruments are linked to weeks 1 to 6; the PID loop and the robot arm are previews of weeks 8 and 10.'}</p></header>
   ${k?`<div id="simhost"></div><div class="sub">Other instruments</div>`:''}<div class="labs labgrid">${labTiles()}</div>${footer()}`;
   if(k) mountSim(k,$('#simhost'));
 }
@@ -510,7 +605,8 @@ function loop(fn){ let id, last=performance.now(); const step=t=>{ const dt=Math
 const rd = (pairs) => `<div class="rd">${pairs.map(([k,id])=>`<div><b id="${id}">·</b><span>${k}</span></div>`).join('')}</div>`;
 function setT(id,v){ const e=document.getElementById(id); if(e) e.textContent=v; }
 
-function mountSim(key,host){ ({phasor:simPhasor,rotate:simRotate,divider:simDivider,rc:simRC,pid:simPID,arm:simArm})[key](host); }
+const SIM_FN={};
+function mountSim(key,host){ const f=SIM_FN[key]||({phasor:simPhasor,rotate:simRotate,divider:simDivider,rc:simRC,pid:simPID,arm:simArm})[key]; if(f) f(host); }
 
 /* --- phasor --- */
 function simPhasor(host){
@@ -730,7 +826,10 @@ function simArm(host){
 }
 
 /* ---------- boot ---------- */
-document.body.insertAdjacentHTML('afterbegin',`<div class="fx noise"></div><div class="fx scan"></div><div class="fx vig"></div>`);
+window.RT.h={simShell,knob,kv,fillTrack,eng,scopeGrid,glowLine,label,bindInputs,loop,rd,setT,css,$,$$,RM,stepResponse};
+window.RT.registerSim=(key,meta,fn)=>{ SIMS[key]=meta; SIM_FN[key]=fn; };
+window.RT.boot=function(){
+document.body.insertAdjacentHTML('afterbegin',`<div class="fx noise"></div><div class="fx scan"></div><div class="fx vig"></div><div class="fx roll"></div>`);
 $('#brandmark').innerHTML=brandSvg;
 paintStatus();
 route();
@@ -742,5 +841,6 @@ if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostn
   navigator.serviceWorker.register('./sw.js').catch(()=>{});
   navigator.serviceWorker.addEventListener('controllerchange',()=>{ if(had&&!shown){ shown=true; banner('Rise Time has been updated','Reload',()=>location.reload()); } had=true; });
 }
+};
 window.__RT_TEST = {weekdaysAfter,addWeekdays,streak,unlocked,setState:x=>{S=Object.assign(blank(),x);},getState:()=>S,checkNum,ymd};
 })();

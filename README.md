@@ -82,3 +82,12 @@ Add an object to `SESSIONS` in `js/content.js`. Its `id` is `(week − 1) × 5 +
 Once a session exists, it takes the place of that week's outline entry automatically.
 
 Number questions use `num(id, question, answer, unit, explanation, tolerance)`, and multiple-choice questions use `mcq(id, question, choices, correctIndex, explanation)`. Every question id must be unique, because progress tracking is keyed on it.
+
+## Update 1.1
+
+- Weeks 4 to 6 are live: AC power, op amps, resonance, diodes and rectifiers, transistors, PWM and H-bridges, three-phase power, RTDs and thermocouples, filters, encoders, ADCs. 30 of 60 sessions now have full content.
+- Formula sheet (`#sheet`): searchable and offline. Formulas appear as sessions unlock, with always-on reference tables (prefixes, 4-20 mA, Pt100, thermocouples, colour code, E12, synchronous speeds).
+- Hints on every question, "Watch out" boxes on every session, answers accept prefixes (4.7k, 54.5m, 680u).
+- Stats page (`#stats`), a "Redo this session's questions" button, nine new lab instruments, and a new motion system (staggered entrances, drawn-in schematics, count-ups, feedback animations).
+- A correct answer after a hint counts, but the question returns sooner in your warm-ups.
+- Service worker is `rise-time-v1.1.0`. Bump it whenever you deploy file changes.
