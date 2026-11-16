@@ -1,6 +1,6 @@
 /* Rise Time service worker: makes the whole app available offline.
    Bump VERSION whenever you deploy changes so devices pick up the new files. */
-const VERSION = 'rise-time-v1.3.0';
+const VERSION = 'rise-time-v1.4.0';
 const SHELL = [
   './',
   './index.html',
@@ -12,9 +12,12 @@ const SHELL = [
   './js/content-w7.js',
   './js/extras2.js',
   './js/content-w10.js',
+  './js/content-w13.js',
   './js/extras.js',
   './js/app.js',
   './js/sims2.js',
+  './js/sims3.js',
+  './js/features.js',
   './manifest.webmanifest',
   './icons/favicon.svg',
   './icons/icon-192.png',
@@ -83,5 +86,39 @@ self.addEventListener('fetch', event => {
     }).catch(() => null);
     if (cached) { event.waitUntil(refresh); return cached; }
     return (await refresh) || Response.error();
+  })());
+});
+
+/* Morning reminder: runs from periodic background sync where the browser allows it (installed Chromium apps).
+   State is kept in a separate cache so the activate cleanup above never deletes it. */
+function localYmd(d){ const f=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+f(d.getMonth()+1)+'-'+f(d.getDate()); }
+self.addEventListener('periodicsync', event => {
+  if (event.tag !== 'rise-time-daily') return;
+  event.waitUntil((async () => {
+    const cache = await caches.open('rtstate');
+    const res = await cache.match('state.json');
+    if (!res) return;
+    const st = await res.json().catch(() => null);
+    if (!st || !st.remind || !st.remind.on) return;
+    const now = new Date(), today = localYmd(now), dow = now.getDay();
+    if (dow === 0 || dow === 6) return;
+    const [hh, mm] = String(st.remind.time || '06:30').split(':').map(Number);
+    if (now.getHours() * 60 + now.getMinutes() < hh * 60 + mm) return;
+    if (st.lastDone === today || st.notified === today) return;
+    await self.registration.showNotification('Rise Time', {
+      body: 'Fifteen minutes this morning keeps the signal clean. Today\'s session is ready.',
+      icon: './icons/icon-192.png', badge: './icons/icon-192.png', tag: 'rise-time-daily', data: { url: './#today' }
+    });
+    st.notified = today;
+    await cache.put('state.json', new Response(JSON.stringify(st), { headers: { 'Content-Type': 'application/json' } }));
+  })());
+});
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || './#today';
+  event.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of all) { if ('focus' in c) { await c.focus(); return; } }
+    await self.clients.openWindow(url);
   })());
 });

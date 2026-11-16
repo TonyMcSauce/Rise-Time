@@ -340,7 +340,7 @@ SESSIONS.push(
 <p>Compare what you <b>should</b> get with what you measure. Actual flow into a cylinder is <span class="m">Q = A × v</span>. Divide by the pump's rated flow to estimate the <b>volumetric efficiency</b>. Overall efficiency is hydraulic power out ÷ shaft power in.</p>
 <p>Method: read the pressure at the pump, then at the actuator, then at the tank return. Where the pressure disappears is where the fault lives. Keep the oil clean, cool and the right level: most hydraulic faults start with contamination.</p>
 <p>Safety first: pressurised oil can penetrate skin. Depressurise, lock out and relieve trapped pressure before opening anything.</p>`,
-  diagram:'faultflow',
+  diagram:'faultflow', sim:'hydcyl',
   pins:['Slow with normal pressure: low flow','No pressure: a leak path','Heat = Δp × Q over a relief valve','Q = A × v; efficiency = actual / theoretical','Depressurise and lock out before opening'],
   worked:{prompt:'A pump supplies 60 L/min to a 100 mm bore cylinder, which extends at only 0.10 m/s. How much flow is reaching the cylinder, and where did the rest go?',
     steps:['Area: <span class="m">π/4 × 0.1² = 7.854×10⁻³ m²</span>','Flow used: <span class="m">Q = 7.854×10⁻³ × 0.10 = 7.85×10⁻⁴ m³/s = 47.1 L/min</span>','Missing: <span class="m">60 − 47.1 = 12.9 L/min</span>, about 21%'],

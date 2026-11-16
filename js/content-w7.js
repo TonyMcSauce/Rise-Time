@@ -146,7 +146,7 @@ SESSIONS.push(
 <p>For an underdamped step response:</p>
 <div class="eq">%OS = 100 e<sup>−πζ/√(1 − ζ²)</sup> &nbsp;&nbsp; t<sub>p</sub> = π / (ω<sub>n</sub>√(1 − ζ²)) &nbsp;&nbsp; t<sub>s</sub> ≈ 4 / (ζ ω<sub>n</sub>)</div>
 <p>Rules of thumb: ζ = 0.7 gives about 5% overshoot and a good compromise; ζ = 0.5 about 16%; ζ = 0.2 rings for a long time. A valve with a stiff spring and a heavy load, a pendulum, a motor with a flexible coupling: all second order.</p>`,
-  diagram:'stepresp', sim:'rc',
+  diagram:'stepresp', sim:'second',
   pins:['First order: ts ≈ 4τ (2%), tr ≈ 2.2τ','ζ < 1 overshoots; ζ = 0.7 is a good design target','%OS = 100 exp(−πζ/√(1−ζ²))','ts ≈ 4/(ζ ωn)'],
   worked:{prompt:'A second-order position loop has ωn = 10 rad/s and ζ = 0.4. Find the overshoot, peak time and settling time.',
     steps:['<span class="m">√(1 − 0.16) = 0.9165</span>','Overshoot: <span class="m">100 e<sup>−π × 0.4 / 0.9165</sup> = 100 e<sup>−1.371</sup> = 25.4%</span>','Peak time: <span class="m">π / (10 × 0.9165) = 0.343 s</span>','Settling: <span class="m">4 / (0.4 × 10) = 1.0 s</span>'],
@@ -166,7 +166,7 @@ SESSIONS.push(
 <p>The <b>real part σ</b> controls growth or decay. A negative σ means the response dies away: <b>stable</b>. A positive σ means it grows: <b>unstable</b>. The <b>imaginary part ω</b> is the ringing frequency.</p>
 <p>So the rule is plain: <b>a system is stable only if every pole has a negative real part</b>, that is, they all sit in the left half of the s-plane. Farther left means faster decay. A pole on the imaginary axis oscillates forever without growing or shrinking.</p>
 <p>For <span class="m">s² + 2ζωn s + ωn²</span> the poles are <span class="m">−ζωn ± jωn√(1 − ζ²)</span>. High gain in a loop often pushes poles to the right: that is why too much gain makes a loop oscillate and then run away.</p>`,
-  diagram:'pzmap',
+  diagram:'pzmap', sim:'second',
   pins:['Poles = roots of the denominator','All poles with negative real parts → stable','Real part sets decay speed, imaginary part sets ringing','Too much loop gain pushes poles right'],
   worked:{prompt:'Analyse G(s) = 1/(s² + 2s + 5): find the poles, ωn, ζ and the overshoot.',
     steps:['Roots: <span class="m">s = (−2 ± √(4 − 20)) / 2 = −1 ± 2j</span>','Both have real part −1, so it is stable','<span class="m">ωn = √5 = 2.236 rad/s</span>','<span class="m">ζ = 2 / (2 × 2.236) = 0.447</span>','Overshoot: <span class="m">100 e<sup>−π × 0.447 / 0.894</sup> = 20.8%</span>'],
@@ -251,7 +251,7 @@ SESSIONS.push(
 <div class="eq">Stall: ω = 0, I = V/R, T = K<sub>t</sub>V/R &nbsp;&nbsp; No-load: T = 0, ω = V/K<sub>e</sub></div>
 <p>Current is proportional to torque, which is why a stalled motor draws many times its rated current and cooks itself. Voltage sets the speed (shifts the line); current sets the torque. This is the whole idea behind PWM speed control from last week and a servo's current loop.</p>
 <p>Mechanical power is <span class="m">P = T ω</span>, peaking halfway between stall and no-load. Remember <b>rad/s to rpm</b>: multiply by 60/2π, about 9.55.</p>`,
-  diagram:'dcmotor',
+  diagram:'dcmotor', sim:'dcm',
   pins:['V = IR + Keω, T = Kt·I','Stall: I = V/R. No-load speed: V/Ke','Voltage sets speed, current sets torque','rpm = rad/s × 9.55'],
   worked:{prompt:'A 24 V DC motor has R = 0.8 Ω and Ke = Kt = 0.06. It carries a steady load torque of 0.3 N·m. Find the current, the speed, and the stall current.',
     steps:['Current from torque: <span class="m">I = T / Kt = 0.3 / 0.06 = 5 A</span>','Back-EMF: <span class="m">E = V − I R = 24 − 5 × 0.8 = 20 V</span>','Speed: <span class="m">ω = E / Ke = 20 / 0.06 = 333 rad/s = 3183 rpm</span>','Stall current: <span class="m">24 / 0.8 = 30 A</span>, torque <span class="m">0.06 × 30 = 1.8 N·m</span>'],
@@ -315,7 +315,7 @@ SESSIONS.push(
 <p>The rod side of a double-acting cylinder has a smaller area (annulus), so it pushes less and retracts faster at the same flow.</p>
 <p>A <b>proportional valve</b> or <b>servo valve</b> takes a 4-20 mA or ±10 V command and moves a spool, opening a flow path in proportion. Flow through the opening depends on the square root of the pressure drop, so the flow you get depends on both the command and the load. A relief valve protects the system by opening at its set pressure.</p>
 <p>Hydraulic stiffness is huge, so loops can be very responsive, but air in the oil makes a cylinder spongy and unstable.</p>`,
-  diagram:'cylinder',
+  diagram:'cylinder', sim:'hydcyl',
   pins:['F = P·A, v = Q/A, P = P·Q','1 bar = 10⁵ Pa; 1 L/min = 1.667×10⁻⁵ m³/s','Rod side has less area: less force, more speed','Valve flow depends on pressure drop'],
   worked:{prompt:'A cylinder has a 100 mm bore and a 56 mm rod, supplied at 160 bar and 60 L/min. Find the extend force, extend speed and hydraulic power.',
     steps:['Area: <span class="m">A = π/4 × 0.1² = 7.854×10⁻³ m²</span>','Force: <span class="m">F = 16×10⁶ × 7.854×10⁻³ = 125.7 kN</span>','Flow: <span class="m">60 L/min = 1.0×10⁻³ m³/s</span>, so <span class="m">v = 1.0×10⁻³ / 7.854×10⁻³ = 0.127 m/s</span>','Power: <span class="m">16×10⁶ × 1.0×10⁻³ = 16 kW</span>'],

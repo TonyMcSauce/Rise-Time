@@ -20,11 +20,12 @@ const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','De
 const fmtDate = d => `${DOW[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}`;
 
 /* ---------- curriculum index ---------- */
-const ALL = [];   // 60 slots
-for(let w=1; w<=12; w++) for(let d=1; d<=5; d++){
+const WEEKS = 14, TOTAL = WEEKS*5;
+const ALL = [];   // one slot per weekday session
+for(let w=1; w<=WEEKS; w++) for(let d=1; d<=5; d++){
   const i=(w-1)*5+d, s=SESSIONS.find(x=>x.id===i);
   if(s) ALL.push(s);
-  else { const o=OUTLINE.find(x=>x.wk===w); const it=o.items[d-1]; ALL.push({id:i,wk:w,day:d,track:it[0],title:it[1],pipe:true,phase:o.phase}); }
+  else { const o=OUTLINE.find(x=>x.wk===w)||{items:[],phase:''}; const it=o.items[d-1]||['REV','Coming soon']; ALL.push({id:i,wk:w,day:d,track:it[0],title:it[1],pipe:true,phase:o.phase}); }
 }
 const PHASE_OF = w => w<=3?'Foundations':(OUTLINE.find(x=>x.wk===w)||{}).phase;
 const QINDEX = {}, QTRACK = {}, QFROM = {};
@@ -35,7 +36,7 @@ const trk = t => TRACKS[t]||TRACKS.REV;
 
 /* ---------- state + storage ---------- */
 const LS='risetime.v1';
-const blank = () => ({v:1,start:null,ahead:0,done:{},cards:{},log:[],updated:0});
+const blank = () => ({v:1,start:null,ahead:0,done:{},cards:{},log:[],notes:[],exams:[],updated:0});
 let S = blank();
 try{ const raw=localStorage.getItem(LS); if(raw) S=Object.assign(blank(),JSON.parse(raw)); }catch(e){}
 let ref=null, sync='connecting', saveTimer=null, chain=Promise.resolve();
@@ -79,7 +80,7 @@ async function initCloud(){
 
 /* ---------- progress logic ---------- */
 const startDate = () => S.start||TODAY();
-const unlocked = () => Math.min(60, 1 + weekdaysAfter(startDate(),TODAY()) + (S.ahead||0));
+const unlocked = () => Math.min(TOTAL, 1 + weekdaysAfter(startDate(),TODAY()) + (S.ahead||0));
 function status(s){
   if(S.done[s.id]) return 'done';
   if(s.pipe) return 'pipe';
@@ -116,6 +117,13 @@ function pool(excludeId){
   const ids=[];
   ALL.forEach(s=>{ if(S.done[s.id] && s.id!==excludeId && !s.pipe) [...(s.tryit||[]),...(s.recall||[])].forEach(q=>ids.push(q.id)); });
   return ids;
+}
+function pickMixed(excludeId,n){
+  const by={}; pool(excludeId).forEach(id=>{ const w=ALL[QFROM[id]-1].wk; (by[w]=by[w]||[]).push(id); });
+  const weeks=Object.keys(by).sort(()=>Math.random()-.5);
+  let out=weeks.slice(0,n).map(w=>pickWeakest(by[w],1)[0]).filter(Boolean);
+  if(out.length<n){ const rest=pool(excludeId).filter(id=>!out.some(q=>q.id===id)); out=out.concat(pickWeakest(rest,n-out.length)); }
+  return out;
 }
 function pickWeakest(ids,n){
   const scored=ids.map(id=>{const c=S.cards[id];return {id,k:(c?c.b:1.5)*10+(c&&c.t===TODAY()?8:0)+Math.random()*4};});
@@ -182,6 +190,7 @@ function repaintQ(qid){
   const q=QINDEX[qid]; const i=+el.dataset.i; const f=el.dataset.from==='1';
   el.outerHTML=renderQ(q,i,f);
   if(RUN && RUN.view==='drill') paintDrillScore();
+  if(RUN && RUN.onAnswer) RUN.onAnswer();
 }
 app.addEventListener('click',e=>{
   const qel=e.target.closest('[data-q]'); if(!qel) return;
@@ -246,6 +255,7 @@ function route(){
   else if(h==='drill') viewDrill();
   else if(h==='sheet') viewSheet();
   else if(h==='stats') viewStats();
+  else if((window.RT.views||{})[h.split('-')[0]]) window.RT.views[h.split('-')[0]](h.split('-').slice(1).join('-'));
   else viewToday();
   fx();
 }
@@ -279,13 +289,14 @@ window.addEventListener('hashchange',()=>{ route(); window.scrollTo({top:0,behav
 
 function footer(){
   const n=Object.keys(S.done).length;
-  return `<footer class="foot"><span>RISE TIME · ${n}/60 SESSIONS LOGGED · STARTED ${S.start?fmtDate(parseYmd(S.start)).toUpperCase():'TODAY'}</span>
-  <span class="row"><button data-act="ahead">Unlock next session early</button>${sync==='local'?'<button data-act="backup">Back up progress</button><button data-act="restore">Restore</button>':''}<button data-act="reset">Reset progress</button></span></footer>`;
+  return `<footer class="foot"><span>RISE TIME · ${n}/${TOTAL} SESSIONS LOGGED · STARTED ${S.start?fmtDate(parseYmd(S.start)).toUpperCase():'TODAY'}</span>
+  <span class="row"><a class="flink" href="#exam">Capstone exam</a><a class="flink" href="#log">Plant log</a><button data-act="settings">Settings</button><button data-act="ahead">Unlock next session early</button>${sync==='local'?'<button data-act="backup">Back up progress</button><button data-act="restore">Restore</button>':''}<button data-act="reset">Reset progress</button></span></footer>`;
 }
 document.addEventListener('click',e=>{
   const a=e.target.closest('[data-act]'); if(!a) return;
   const act=a.dataset.act;
   if(act==='ahead'){ const nxt=ALL.find(s=>!S.done[s.id]&&status(s)==='locked'); if(!nxt){toast('Nothing left to unlock yet');return;} S.ahead=(S.ahead||0)+1; save(); toast(`Unlocked ${code(nxt)}`); route(); }
+  if(act==='settings'&&window.RT.openSettings) window.RT.openSettings();
   if(act==='backup') backup();
   if(act==='restore') restore();
   if(act==='reset') modal('Reset all progress?','This clears your streak, logged sessions and question history on every device. It cannot be undone.','Reset',()=>{ const keep=S.updated; S=blank(); S.start=TODAY(); S.updated=keep+1; save(); flush(); location.hash='#today'; route(); toast('Progress reset'); });
@@ -346,7 +357,7 @@ function viewToday(){
       <div style="display:grid;gap:18px">
         <div class="row"><span class="chip" style="--c:${tk.color}">${tk.ch} · ${tk.name}</span><span class="chip" style="--c:var(--ink-3)">≈ 15 min</span></div>
         <div class="probes"><span class="probe"><b>01</b>Warm-up</span><span class="probe"><b>02</b>Learn</span><span class="probe"><b>03</b>Work it</span><span class="probe"><b>04</b>On the plant</span></div>
-        <div class="row"><a class="btn pri" href="#session-${t.id}">Begin session <span class="k">→</span></a><a class="btn" href="#map">Open the 12-week map</a></div>
+        <div class="row"><a class="btn pri" href="#session-${t.id}">Begin session <span class="k">→</span></a><a class="btn" href="#map">Open the course map</a></div>
       </div></section>`;
   } else {
     const nxt=ALL.find(s=>!S.done[s.id]);
@@ -362,7 +373,7 @@ function viewToday(){
   const vu=Object.entries(m).map(([k,v])=>{ const tk=TRACKS[k]; const pct=v.n?Math.round(v.sum/v.n*100):0; const lit=Math.round(pct/5);
     return `<div class="vu-row ${v.n?'':'off'}" style="--c:${tk.color}"><span class="nm"><em>${tk.ch}</em> ${tk.name}</span><span class="segs">${Array.from({length:20},(_,i)=>`<i class="${i<lit?'lit':''}" style="animation-delay:${i*30}ms"></i>`).join('')}</span><span class="pc">${v.n?pct+'%':'·'}</span></div>`; }).join('');
 
-  const upIdx = t ? t.id : (ALL.find(s=>!S.done[s.id])||{id:61}).id;
+  const upIdx = t ? t.id : (ALL.find(s=>!S.done[s.id])||{id:TOTAL+1}).id;
   const ups=ALL.filter(s=>s.id>=upIdx && !S.done[s.id]).slice(t?1:0, t?5:4);
   const upHtml = ups.length ? ups.map(s=>{const sv=status(s); const tk=trk(s.track);
     const when = sv==='open'?'READY':sv==='locked'?fmtDate(unlockDate(s)).toUpperCase():'IN PIPELINE';
@@ -377,9 +388,9 @@ function viewToday(){
         <div class="big"><span data-count="${st}">${st}</span><small>${st===1?'DAY':'DAYS'} · BEST ${Math.max(best(),st)}</small></div>
         <div class="days">${dayCells}</div></section>
       <section class="panel"><div class="eyebrow">Programme</div>
-        <h3 style="margin-top:10px"><span data-count="${doneN}">${doneN}</span> of 60 sessions</h3>
-        <div class="meter"><i style="width:${Math.max(1.5,doneN/60*100)}%"></i></div>
-        <div class="readout"><span>WEEK ${t?t.wk:Math.min(12,Math.ceil((doneN+1)/5))} OF 12</span><span>${recent?'LAST '+(recent.c)+'/'+(recent.n)+' CORRECT':'NO SESSIONS YET'}</span></div></section>
+        <h3 style="margin-top:10px"><span data-count="${doneN}">${doneN}</span> of ${TOTAL} sessions</h3>
+        <div class="meter"><i style="width:${Math.max(1.5,doneN/TOTAL*100)}%"></i></div>
+        <div class="readout"><span>WEEK ${t?t.wk:Math.min(WEEKS,Math.ceil((doneN+1)/5))} OF ${WEEKS}</span><span>${recent?'LAST '+(recent.c)+'/'+(recent.n)+' CORRECT':'NO SESSIONS YET'}</span></div></section>
     </div>
     <section class="panel mastery"><div class="eyebrow">Mastery by channel</div><h2 style="margin-top:10px">What's sticking</h2>
       <div class="vu">${vu}</div>
@@ -393,10 +404,10 @@ function viewToday(){
 /* ================= MAP ================= */
 function viewMap(){
   navOn('map'); RUN=null;
-  let h=`<div class="maphead"><div><div class="eyebrow">12 weeks · 60 sessions · weekdays</div><h1 style="margin-top:12px">The map</h1></div>
+  let h=`<div class="maphead"><div><div class="eyebrow">${WEEKS} weeks · ${TOTAL} sessions · weekdays</div><h1 style="margin-top:12px">The map</h1></div>
   <div class="legend"><span class="l-done"><i></i>LOGGED</span><span class="l-open"><i></i>READY</span><span><i></i>LOCKED</span><span class="l-pipe"><i></i>IN PIPELINE</span></div></div>`;
   let lastPhase='';
-  for(let w=1;w<=12;w++){
+  for(let w=1;w<=WEEKS;w++){
     const ph=PHASE_OF(w); if(ph!==lastPhase){ h+=`<div class="phase">${ph}</div>`; lastPhase=ph; }
     h+=`<div class="wk"><div class="wkn"><small>WEEK</small>${String(w).padStart(2,'0')}</div>`;
     for(let d=1;d<=5;d++){
@@ -418,10 +429,11 @@ function viewSession(id){
   if(!s || s.pipe || status(s)==='locked'){ app.innerHTML=`<section class="panel"><div class="eyebrow">Locked</div><h2 style="margin-top:10px">${s?esc(s.title):'Session not found'}</h2><p class="empty" style="margin-top:10px">${s&&!s.pipe?'This session unlocks '+fmtDate(unlockDate(s))+'.':'This content is still in the pipeline.'}</p><a class="btn" href="#today">Back to the bench</a></section>`; return; }
   if(!RUN || RUN.id!==id || RUN.view!=='session'){
     QS={};
-    let warm = pickWeakest(pool(id),3);
+    const mixed=!!s.review && pool(id).length>=5, need=mixed?5:3;
+    let warm = mixed ? pickMixed(id,5) : pickWeakest(pool(id),3);
     let cold=false;
-    if(warm.length<3){ cold=!warm.length; const extra=BASELINE.filter(q=>!warm.includes(q)).sort(()=>Math.random()-.5).slice(0,3-warm.length); warm=warm.concat(extra); }
-    RUN={view:'session',id,stage:0,seen:new Set([0]),warm,cold,t0:Date.now(),complete:false,showSteps:0,fresh:true};
+    if(warm.length<need){ cold=!warm.length; const extra=BASELINE.filter(q=>!warm.includes(q)).sort(()=>Math.random()-.5).slice(0,need-warm.length); warm=warm.concat(extra); }
+    RUN={view:'session',id,mixed,stage:0,seen:new Set([0]),warm,cold,t0:Date.now(),complete:false,showSteps:0,fresh:true};
   }
   paintSession();
 }
@@ -431,8 +443,8 @@ function paintSession(){
   const rail=`<nav class="rail" aria-label="Session stages"><a class="back" href="#today">← BENCH</a>${STAGES.map((l,i)=>`<button class="stg ${i===RUN.stage?'on':''} ${RUN.seen.has(i)&&i!==RUN.stage?'seen':''}" data-stage="${i}"><span class="n">${String(i+1).padStart(2,'0')}</span><span class="l">${l}</span></button>`).join('')}</nav>`;
   let body='';
   if(RUN.stage===0){
-    body=`<div class="sub">${RUN.cold?'Cold start · three quick primers':'Three from the archive'}</div>
-    <p class="empty" style="margin:-4px 0 18px">${RUN.cold?'Nothing in your archive yet, so here are three primers to get the brain turning over.':'Spaced review. These are the questions you have struggled with or not seen for a while.'}</p>
+    body=`<div class="sub">${RUN.cold?'Cold start · three quick primers':RUN.mixed?'Friday mixed review · from several earlier weeks':'Three from the archive'}</div>
+    <p class="empty" style="margin:-4px 0 18px">${RUN.cold?'Nothing in your archive yet, so here are three primers to get the brain turning over.':RUN.mixed?'One question from each of several different weeks, weakest first, so nothing goes stale.':'Spaced review. These are the questions you have struggled with or not seen for a while.'}</p>
     <div class="qs">${RUN.warm.map((q,i)=>renderQ(q,i,true)).join('')}</div>`;
   } else if(RUN.stage===1){
     body=`<div class="prose">${s.learn}</div>${s.diagram?DIAG[s.diagram]():''}${s.sim&&SIMS[s.sim]?`<div id="simhost"></div>`:''}
@@ -449,6 +461,7 @@ function paintSession(){
     const done=S.done[s.id];
     body=`<article class="plant"><div class="tagline">On the plant</div><h2>${s.plant.title}</h2>${s.plant.body}</article>
     ${s.recall&&s.recall.length?`<div class="sub">One for the archive</div><div class="qs">${s.recall.map((q,i)=>renderQ(q,i,false)).join('')}</div>`:''}
+    ${window.RT.notesBox?window.RT.notesBox(s.id):''}
     <div class="row" style="margin-top:22px">${s.formulas?`<a class="btn sm" href="#sheet">Formulas from this session</a>`:''}${done?`<button class="btn sm" data-redo>Redo this session's questions</button>`:''}</div>`;
   }
   const last=RUN.stage===3;
@@ -460,6 +473,7 @@ function paintSession(){
   RUN.anim=false;
   if(RUN.fresh){ RUN.fresh=false; fx(); } else if(RUN.stagefx){ RUN.stagefx=false; fx($('#stage')); }
   if(RUN.stage===1 && s.sim && SIMS[s.sim]){ clearView(); mountSim(s.sim,$('#simhost')); }
+  if(RUN.stage===3 && window.RT.notesBind) window.RT.notesBind(s.id);
 }
 app.addEventListener('click',e=>{
   if(!RUN||RUN.view!=='session') return;
@@ -511,13 +525,16 @@ function viewSheet(){
   const nF=have.reduce((a,x)=>a+x.formulas.length,0);
   const cards=have.map(x=>{ const tk=trk(x.track);
     const rows=x.formulas.map(f=>`<div class="frow"><span class="fn">${f.n}</span><span class="ff">${f.f}</span>${f.note?`<span class="fnote">${f.note}</span>`:''}</div>`).join('');
-    return `<section class="panel sheetcard" style="--c:${tk.color}" data-t="${esc((x.title+' '+x.formulas.map(f=>f.n+' '+f.f+' '+f.note).join(' ')).replace(/<[^>]+>/g,'').toLowerCase())}"><div class="eyebrow"><span>${code(x)}</span><span class="ch" style="--c:${tk.color}">${tk.ch} · ${tk.name}</span></div><h3>${esc(x.title)}</h3><div class="fl">${rows}</div></section>`; }).join('');
-  const refs=window.RT.REF.map(t=>`<section class="panel sheetcard ref" data-t="${esc((t.title+' '+t.rows.map(r=>r.join(' ')).join(' ')).toLowerCase())}"><div class="eyebrow">Reference</div><h3>${t.title}</h3><div class="tw"><table><thead><tr>${t.cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${t.rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('');
+    return `<section class="panel sheetcard" style="--c:${tk.color}" data-ph="${esc(PHASE_OF(x.wk)||'')}" data-t="${esc((x.title+' '+x.formulas.map(f=>f.n+' '+f.f+' '+f.note).join(' ')).replace(/<[^>]+>/g,'').toLowerCase())}"><div class="eyebrow"><span>${code(x)}</span><span class="ch" style="--c:${tk.color}">${tk.ch} · ${tk.name}</span></div><h3>${esc(x.title)}</h3><div class="fl">${rows}</div></section>`; }).join('');
+  const refs=window.RT.REF.map(t=>`<section class="panel sheetcard ref" data-ph="Reference" data-t="${esc((t.title+' '+t.rows.map(r=>r.join(' ')).join(' ')).toLowerCase())}"><div class="eyebrow">Reference</div><h3>${t.title}</h3><div class="tw"><table><thead><tr>${t.cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${t.rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('');
   app.innerHTML=`<header class="shead"><div class="eyebrow">Formula sheet · works offline</div><h1>The sheet</h1><p>${nF} formulas from the sessions you have opened, plus reference tables that are always here. ${locked?`${locked} more session${locked>1?'s':''} will add theirs as they unlock.`:''}</p></header>
-  <div class="searchbar"><input id="sheet-q" type="search" placeholder="Search: ripple, Pt100, gain, torque…" autocomplete="off" aria-label="Search the formula sheet"><span class="readout" id="sheet-n" style="margin:0"></span></div>
+ <div class="phasebar noprint" id="sheet-ph"><button class="on" data-p="">All</button>${[...new Set(ALL.map(x=>PHASE_OF(x.wk)).filter(Boolean))].map(p=>`<button data-p="${esc(p)}">${esc(p)}</button>`).join('')}<button data-p="Reference">Reference tables</button><button class="printbtn" data-print>Print or save as PDF</button></div>
+  <div class="searchbar noprint"><input id="sheet-q" type="search" placeholder="Search: ripple, Pt100, gain, torque…" autocomplete="off" aria-label="Search the formula sheet"><span class="readout" id="sheet-n" style="margin:0"></span></div>
   <div class="sheetgrid">${cards}${refs}</div><p class="empty" id="sheet-none" hidden style="margin-top:18px">Nothing matches that. Try a shorter word.</p>${footer()}`;
-  const q=$('#sheet-q'), upd=()=>{ const v=q.value.trim().toLowerCase(); let n=0; $$('.sheetcard').forEach(c=>{ const m=!v||c.dataset.t.includes(v); c.hidden=!m; if(m) n++; }); $('#sheet-none').hidden=n>0; $('#sheet-n').textContent=v?n+' MATCH'+(n===1?'':'ES'):''; };
+  let ph=''; const q=$('#sheet-q'), upd=()=>{ const v=q.value.trim().toLowerCase(); let n=0; $$('.sheetcard').forEach(c=>{ const m=(!v||c.dataset.t.includes(v))&&(!ph||c.dataset.ph===ph); c.hidden=!m; if(m) n++; }); $('#sheet-none').hidden=n>0; $('#sheet-n').textContent=v?n+' MATCH'+(n===1?'':'ES'):''; };
   q.addEventListener('input',upd);
+  $$('#sheet-ph button[data-p]').forEach(b=>b.onclick=()=>{ ph=b.dataset.p; $$('#sheet-ph button[data-p]').forEach(x=>x.classList.toggle('on',x===b)); upd(); });
+  $('[data-print]').onclick=()=>{ document.body.dataset.printTitle='Rise Time formula sheet'+(ph?' · '+ph:'')+' · '+fmtDate(new Date()); window.print(); };
 }
 
 /* ================= STATS ================= */
@@ -546,6 +563,7 @@ function viewStats(){
    <section class="panel statcard"><div class="eyebrow">Recent sessions</div><h3>Score and time</h3><div class="spark">${spark}</div><p class="hint" style="margin-top:10px"><span class="lg a"></span> share right first time &nbsp; <span class="lg t"></span> time taken</p></section>
    <section class="panel statcard"><div class="eyebrow">Toughest questions</div><h3>Worth another look</h3><div class="list">${hardH}</div></section>
    <section class="panel statcard"><div class="eyebrow">Consistency · 12 weeks</div><h3>Weekday grid</h3><div class="cgrid">${grid}</div><p class="hint" style="margin-top:10px">Best run: ${Math.max(best(),streak())} weekdays. Current: ${streak()}.</p></section>
+   ${window.RT.examStats?window.RT.examStats():''}
   </div>${footer()}`;
 }
 
@@ -842,5 +860,6 @@ if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostn
   navigator.serviceWorker.addEventListener('controllerchange',()=>{ if(had&&!shown){ shown=true; banner('Rise Time has been updated','Reload',()=>location.reload()); } had=true; });
 }
 };
+window.RT.core={ get S(){return S;}, save, route, app, ALL, TOTAL, WEEKS, QINDEX, QFROM, QTRACK, TRACKS, PHASE_OF, status, renderQ, esc, toast, modal, fx, burst, footer, navOn, setRUN:r=>{RUN=r;}, get RUN(){return RUN;}, resetQS:()=>{QS={};}, get QS(){return QS;}, fmtDate, parseYmd, ymd, TODAY, code, trk, streak, todays, flush };
 window.__RT_TEST = {weekdaysAfter,addWeekdays,streak,unlocked,setState:x=>{S=Object.assign(blank(),x);},getState:()=>S,checkNum,ymd};
 })();
