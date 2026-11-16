@@ -235,7 +235,7 @@ window.addEventListener('hashchange',()=>{ route(); window.scrollTo({top:0,behav
 function footer(){
   const n=Object.keys(S.done).length;
   return `<footer class="foot"><span>RISE TIME · ${n}/60 SESSIONS LOGGED · STARTED ${S.start?fmtDate(parseYmd(S.start)).toUpperCase():'TODAY'}</span>
-  <span class="row"><button data-act="ahead">Unlock next session early</button><button data-act="backup">Back up progress</button><button data-act="restore">Restore</button><button data-act="reset">Reset progress</button></span></footer>`;
+  <span class="row"><button data-act="ahead">Unlock next session early</button>${sync==='local'?'<button data-act="backup">Back up progress</button><button data-act="restore">Restore</button>':''}<button data-act="reset">Reset progress</button></span></footer>`;
 }
 document.addEventListener('click',e=>{
   const a=e.target.closest('[data-act]'); if(!a) return;
