@@ -95,3 +95,7 @@ Number questions use `num(id, question, answer, unit, explanation, tolerance)`, 
 ## Update 1.2
 
 Weeks 7 to 9 are in (sessions 31 to 45): Laplace and transfer functions, first and second order responses, poles and stability, PID and tuning, DC motors, induction motors and VSDs, hydraulics, PLC scan cycle, ladder patterns, and interlocks and safety. Nine new diagrams, plus hints, watch-outs and formulas for every new session. Weeks 10 to 12 (robot kinematics, embedded, comms and fault finding) are next.
+
+## Update 1.3
+
+Weeks 10 to 12 complete the course (sessions 46 to 60): frames and transforms, forward and inverse kinematics, the Jacobian; microcontrollers, timers and interrupts, UART, I²C and SPI, Modbus and RS-485; and four fault-finding sessions (conveyor drive, hydraulic circuit, oscillating loop, robot cell) ending with a final review. Nine new diagrams, hints, watch-outs and formulas throughout. The existing two-link arm lab is used for the kinematics sessions.
